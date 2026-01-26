@@ -1,0 +1,6 @@
+telethon
+yt-dlp
+openai
+python-dotenv
+toml
+cryptg

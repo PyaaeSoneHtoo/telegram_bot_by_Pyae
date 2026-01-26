@@ -1,0 +1,22 @@
+# Sensitive data
+.env
+*.session
+*.session-journal
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.python-version
+
+# Local downloads
+downloads/
+
+# IDE files
+.vscode/
+.idea/
