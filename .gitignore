@@ -20,3 +20,4 @@ downloads/
 # IDE files
 .vscode/
 .idea/
+*.pyc

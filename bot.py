@@ -30,9 +30,9 @@ API_ID = int(os.getenv("API_ID")) if os.getenv("API_ID") else None
 API_HASH = os.getenv("API_HASH")
 PHONE = os.getenv("PHONE")
 
-# FFMPEG PATHS
+# FFMPEG PATHS (dynamic detection with Windows fallback)
 FFMPEG_DIR = r"C:\ffmpeg\bin"
-FFMPEG_EXE = os.path.join(FFMPEG_DIR, "ffmpeg.exe")
+FFMPEG_EXE = shutil.which("ffmpeg") or os.path.join(FFMPEG_DIR, "ffmpeg.exe")
 
 # Local Downloads Folder (Inside Bot folder)
 DOWNLOAD_BASE = os.path.join(BASE_DIR, "downloads")
