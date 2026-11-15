@@ -25,14 +25,14 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-API_ID = int(os.getenv("API_ID")) if os.getenv("API_ID") else None
-API_HASH = os.getenv("API_HASH")
-PHONE = os.getenv("PHONE")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8727004701:AAFnQTPneMVlT6pyGC_dys5KHxSQ_VX6OIM")
+API_ID = int(os.getenv("API_ID", "33821639")) if os.getenv("API_ID") else 33821639
+API_HASH = os.getenv("API_HASH", "22533aeb1ea63aab9329e0f47f280118")
+PHONE = os.getenv("PHONE", "+95943094338")
 
-# FFMPEG PATHS (dynamic detection with Windows fallback)
-FFMPEG_DIR = r"C:\ffmpeg\bin"
-FFMPEG_EXE = shutil.which("ffmpeg") or os.path.join(FFMPEG_DIR, "ffmpeg.exe")
+# FFMPEG PATHS (dynamic cross-platform detection)
+FFMPEG_EXE = shutil.which("ffmpeg") or (r"C:\ffmpeg\bin\ffmpeg.exe" if os.path.exists(r"C:\ffmpeg\bin\ffmpeg.exe") else "ffmpeg")
+FFMPEG_DIR = os.path.dirname(FFMPEG_EXE) if FFMPEG_EXE and os.path.dirname(FFMPEG_EXE) and os.path.isabs(FFMPEG_EXE) else None
 
 # Local Downloads Folder (Inside Bot folder)
 DOWNLOAD_BASE = os.path.join(BASE_DIR, "downloads")
@@ -161,10 +161,11 @@ async def download_yt(event, url, mode='video'):
     
     # Generic options for extraction/discovery
     ydl_opts_base = {
-        'ffmpeg_location': FFMPEG_DIR,
         'quiet': True,
         'no_warnings': True,
     }
+    if FFMPEG_DIR:
+        ydl_opts_base['ffmpeg_location'] = FFMPEG_DIR
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts_base) as ydl:
@@ -212,12 +213,13 @@ async def download_yt(event, url, mode='video'):
                     'format': 'bestvideo+bestaudio/best' if mode == 'video' else 'bestaudio/best',
                     'outtmpl': os.path.join(req_dir, f'item_{i}_%(title)s.%(ext)s'),
                     'noplaylist': True,
-                    'ffmpeg_location': FFMPEG_DIR,
                     'quiet': True,
                     'no_warnings': True,
                     'progress_hooks': [ydl_progress_hook],
                     'writethumbnail': True, # We'll handle thumbnail download manually or via ydl
                 }
+                if FFMPEG_DIR:
+                    current_ydl_opts['ffmpeg_location'] = FFMPEG_DIR
                 
                 if mode == 'music':
                     current_ydl_opts['postprocessors'] = [{
@@ -294,17 +296,24 @@ async def download_yt(event, url, mode='video'):
 
 @tg_client.on(events.NewMessage(pattern='/start'))
 async def start_handler(event):
-    await help_handler(event)
+    await event.reply(
+        "👋 **Welcome to VideoPipeline Music & Video Bot!** (@VideoPipelineMusicBot)\n\n"
+        "Send me any YouTube link or use commands below:\n\n"
+        "• `/mp4 <youtube_link>` - Download high-quality MP4 Video\n"
+        "• `/mp3 <youtube_link>` - Download high-quality 320kbps MP3 Audio\n"
+        "• `/help` - Show instructions\n\n"
+        "💡 **Tip**: You can also just paste or forward any YouTube link directly to download it as MP4!"
+    )
 
 @tg_client.on(events.NewMessage(pattern='/help'))
 async def help_handler(event):
     await event.reply(
-        "🚀 **YouTube Downloader Bot Help**\n\n"
+        "🚀 **VideoPipeline Music & Video Bot Help**\n\n"
         "Commands:\n"
-        "• `/mp4 <link>` - Download high-quality Video (AMD GPU accelerated)\n"
-        "• `/mp3 <link>` - Download high-quality Audio (320kbps)\n"
+        "• `/mp4 <link>` - Download high-quality Video (Fast stream copy / Re-encode)\n"
+        "• `/mp3 <link>` - Download high-quality Audio (320kbps MP3)\n"
         "• `/help` - Show this message\n\n"
-        "💡 **Tip**: You can also just send a YouTube link directly, and I will download it as an MP4 video!"
+        "💡 **Tip**: Send any YouTube link directly to download as video!"
     )
 
 @tg_client.on(events.NewMessage(pattern='/mp4'))
