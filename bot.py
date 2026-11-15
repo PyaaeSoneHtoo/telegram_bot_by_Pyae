@@ -217,7 +217,7 @@ def apply_common_ydl_opts(opts):
     if FFMPEG_DIR:
         opts['ffmpeg_location'] = FFMPEG_DIR
     if NODE_EXE:
-        opts['js_runtimes'] = {'node': None}
+        opts['js_runtimes'] = {'node': {'path': NODE_EXE}}
     return opts
 
 async def download_yt(event, url, mode='video'):
