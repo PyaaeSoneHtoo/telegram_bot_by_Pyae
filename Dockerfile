@@ -1,8 +1,9 @@
 FROM python:3.11-slim
 
-# Install system dependencies
+# Install system dependencies including ffmpeg and nodejs (for YouTube JS n-challenge solving)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    nodejs \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
