@@ -35,6 +35,13 @@ COOKIE_FILE = os.path.join(BASE_DIR, "cookies.txt")
 cookies_env = os.getenv("YOUTUBE_COOKIES")
 if cookies_env:
     try:
+        import base64
+        try:
+            decoded = base64.b64decode(cookies_env).decode("utf-8")
+            if "Cookie File" in decoded or ".google.com" in decoded or ".youtube.com" in decoded:
+                cookies_env = decoded
+        except Exception:
+            pass
         with open(COOKIE_FILE, "w", encoding="utf-8") as f:
             f.write(cookies_env.strip() + "\n")
         logger.info(f"Loaded YouTube cookies from YOUTUBE_COOKIES env var ({len(cookies_env)} bytes).")

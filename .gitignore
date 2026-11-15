@@ -5,6 +5,7 @@
 cookies.txt
 *cookie*.txt
 *.cookies
+*.b64
 
 # Python
 __pycache__/
