@@ -48,12 +48,22 @@ if cookies_env:
     except Exception as e:
         logger.error(f"Failed to write cookies from env: {e}")
 
-# NODEJS RUNTIME DETECTION (for yt-dlp JS n-challenge solving)
-NODE_EXE = shutil.which("node") or shutil.which("nodejs")
+# JAVASCRIPT RUNTIME DETECTION (Deno / Node.js for YouTube JS n-challenge solving)
+DENO_EXE = shutil.which("deno") or ("/usr/local/bin/deno" if os.path.exists("/usr/local/bin/deno") else None)
+NODE_EXE = shutil.which("node") or shutil.which("nodejs") or ("/usr/bin/node" if os.path.exists("/usr/bin/node") else None)
+if DENO_EXE:
+    logger.info(f"Found Deno JavaScript runtime: {DENO_EXE}")
 if NODE_EXE:
     logger.info(f"Found Node.js JavaScript runtime: {NODE_EXE}")
-else:
-    logger.info("Node.js not found in system PATH.")
+
+# BROWSER IMPERSONATION (curl_cffi TLS & HTTP/2 browser fingerprinting)
+CHROME_IMPERSONATE = None
+try:
+    from yt_dlp.networking.impersonate import ImpersonateTarget
+    CHROME_IMPERSONATE = ImpersonateTarget.from_str('chrome')
+    logger.info("Browser impersonation (curl_cffi chrome) is active.")
+except Exception as e:
+    logger.info(f"Browser impersonation not active: {e}")
 
 # FFMPEG PATHS (dynamic cross-platform detection)
 FFMPEG_EXE = shutil.which("ffmpeg") or (r"C:\ffmpeg\bin\ffmpeg.exe" if os.path.exists(r"C:\ffmpeg\bin\ffmpeg.exe") else "ffmpeg")
@@ -138,9 +148,9 @@ async def fast_upload(file_path, progress_callback=None):
         return await tg_client.upload_file(file_path, progress_callback=progress_callback)
 
 async def reencode_video_gpu(input_path):
-    """Re-encode video using AMD GPU (amf) or CPU fallback"""
-    output_path = os.path.splitext(input_path)[0] + "_gpu.mp4"
-    logger.info(f"Starting re-encoding: {input_path} -> {output_path}")
+    """Re-encode video to fast-streaming MP4 H.264/AAC for Telegram"""
+    output_path = os.path.splitext(input_path)[0] + "_telegram.mp4"
+    logger.info(f"Starting video optimization: {input_path} -> {output_path}")
     
     codec = 'h264_amf' if amf_exists else 'libx264'
     
@@ -174,51 +184,72 @@ async def reencode_video_gpu(input_path):
                 cmd[5:7] = ['-preset', 'veryfast', '-crf', '23']
                 process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
                 await process.communicate()
-                if process.returncode == 0: return output_path
+                if process.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                    return output_path
             return input_path
             
-        return output_path
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            return output_path
+        return input_path
     except Exception as e:
         logger.error(f"Re-encoding Exception: {e}")
         return input_path
+
+def apply_common_ydl_opts(opts):
+    """Appends ffmpeg, js runtimes, and browser impersonation options"""
+    if FFMPEG_DIR:
+        opts['ffmpeg_location'] = FFMPEG_DIR
+    
+    # Configure JavaScript runtimes for YouTube challenge solving
+    js_runtimes = {}
+    if DENO_EXE:
+        js_runtimes['deno'] = {'path': DENO_EXE}
+    if NODE_EXE:
+        js_runtimes['node'] = {'path': NODE_EXE}
+    if js_runtimes:
+        opts['js_runtimes'] = js_runtimes
+
+    # Impersonate modern browser TLS/JA3/JA4 fingerprint to bypass 403 Forbidden
+    if CHROME_IMPERSONATE:
+        opts['impersonate'] = CHROME_IMPERSONATE
+
+    return opts
 
 def get_extraction_strategies():
     """Returns fallback extraction/download strategies for yt-dlp"""
     strategies = []
     has_cookies = os.path.exists(COOKIE_FILE) and os.path.getsize(COOKIE_FILE) > 0
 
-    # Strategy 1: Android client (most reliable on datacenter IPs without SABR block)
+    # Strategy 1: Modern default client (uses visionos/web modern API, works without cookies and with curl_cffi)
     strategies.append({
-        'name': 'android_client',
-        'extractor_args': {'youtube': {'player_client': ['android', 'ios']}},
+        'name': 'modern_default',
     })
 
-    # Strategy 2: If cookies exist, try authenticated desktop/mweb
+    # Strategy 2: If cookies exist, try authenticated web
     if has_cookies:
         strategies.append({
-            'name': 'cookies_web',
+            'name': 'cookies_auth',
             'cookiefile': COOKIE_FILE,
-            'extractor_args': {'youtube': {'player_client': ['web', 'mweb', 'tv']}},
+            'extractor_args': {'youtube': {'player_client': ['web', 'mweb']}},
         })
         strategies.append({
             'name': 'cookies_default',
             'cookiefile': COOKIE_FILE,
         })
 
-    # Strategy 3: Default web client fallback
+    # Strategy 3: Mobile web fallback
     strategies.append({
-        'name': 'default_web',
+        'name': 'mweb_fallback',
+        'extractor_args': {'youtube': {'player_client': ['mweb', 'web']}},
+    })
+
+    # Strategy 4: Android / iOS mobile fallback
+    strategies.append({
+        'name': 'mobile_api',
+        'extractor_args': {'youtube': {'player_client': ['android', 'ios']}},
     })
 
     return strategies
-
-def apply_common_ydl_opts(opts):
-    """Appends ffmpeg and nodejs runtimes to options dictionary"""
-    if FFMPEG_DIR:
-        opts['ffmpeg_location'] = FFMPEG_DIR
-    if NODE_EXE:
-        opts['js_runtimes'] = {'node': {'path': NODE_EXE}}
-    return opts
 
 async def download_yt(event, url, mode='video'):
     # Create unique request folder
@@ -287,9 +318,7 @@ async def download_yt(event, url, mode='video'):
                 continue
 
             title = entry.get('title', 'Unknown')
-            video_url = entry.get('webpage_url') or entry.get('url')
-            if not video_url:
-                continue
+            video_url = entry.get('webpage_url') or entry.get('url') or url
 
             local_thumb = None
 
@@ -451,7 +480,7 @@ async def help_handler(event):
 async def mp4_cmd_handler(event):
     parts = event.text.split(' ', 1)
     if len(parts) > 1:
-        await download_yt(event, parts[1], mode='video')
+        await download_yt(event, parts[1].strip(), mode='video')
     else:
         await event.reply("❌ Usage: `/mp4 <youtube_link>`")
 
@@ -459,7 +488,7 @@ async def mp4_cmd_handler(event):
 async def mp3_cmd_handler(event):
     parts = event.text.split(' ', 1)
     if len(parts) > 1:
-        await download_yt(event, parts[1], mode='music')
+        await download_yt(event, parts[1].strip(), mode='music')
     else:
         await event.reply("❌ Usage: `/mp3 <youtube_link>`")
 
@@ -475,7 +504,7 @@ async def general_handler(event):
                 url = word
                 break
         if url:
-            await download_yt(event, url, mode='video')
+            await download_yt(event, url.strip(), mode='video')
 
 if __name__ == '__main__':
     print("YouTube Downloader Bot is starting...")
